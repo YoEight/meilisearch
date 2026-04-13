@@ -189,6 +189,8 @@ impl IndexScheduler {
                 .map_err(|e| Error::from_milli(e, Some(name.to_string())))?;
         }
 
+        self.dynamic_search_rules.copy_to_snapshot(temp_snapshot_dir.path(), compaction_option)?;
+
         drop(rtxn);
 
         // 4. Snapshot the auth LMDB env

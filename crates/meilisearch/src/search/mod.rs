@@ -42,6 +42,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 #[cfg(test)]
 mod mod_test;
+use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -1822,8 +1823,14 @@ pub fn perform_search(
     )?;
 
     let pins = if features.runtime_features().dynamic_search_rules {
-        let rules = index_scheduler.dynamic_search_rules();
-        resolve_pins(&rules, &query, &index_uid, index, &rtxn)?
+        let now = OffsetDateTime::now_utc();
+        let rules = index_scheduler.candidate_dynamic_search_rules(
+            query.q.as_deref(),
+            &index_uid,
+            now,
+            progress,
+        )?;
+        resolve_pins(&rules, &query, &index_uid, index, &rtxn, now)?
     } else {
         Vec::new()
     };

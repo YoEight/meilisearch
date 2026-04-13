@@ -2,7 +2,7 @@ use super::SearchQuery;
 use crate::milli::Index;
 use itertools::Itertools;
 use meilisearch_types::dynamic_search_rules::{
-    Condition, DynamicSearchRule, DynamicSearchRuleAction, DynamicSearchRules, Selector,
+    Condition, DynamicSearchRule, DynamicSearchRuleAction, Selector,
 };
 use meilisearch_types::heed::{self, RoTxn};
 use meilisearch_types::milli;
@@ -62,13 +62,13 @@ pub struct ActiveRules<'a> {
 }
 
 pub fn collect_active_rules<'a>(
-    rules: &'a DynamicSearchRules,
+    rules: impl IntoIterator<Item = &'a DynamicSearchRule>,
     ctx: &DynamicSearchContext<'_>,
+    now: OffsetDateTime,
 ) -> ActiveRules<'a> {
     let mut positioning_rules = Vec::new();
-    let now = OffsetDateTime::now_utc();
 
-    for rule in rules.values() {
+    for rule in rules {
         if !is_rule_active(rule, ctx, now) {
             continue;
         }
@@ -94,16 +94,17 @@ pub fn collect_active_rules<'a>(
 }
 
 pub fn resolve_pins(
-    rules: &DynamicSearchRules,
+    rules: &[DynamicSearchRule],
     query: &SearchQuery,
     index_uid: &str,
     index: &Index,
     rtxn: &RoTxn<'_>,
+    now: OffsetDateTime,
 ) -> heed::Result<Vec<PinDoc>> {
     let ctx = DynamicSearchContext { query: query.q.as_ref().map(|q| q.to_lowercase()), index_uid };
 
     let external_ids = index.external_documents_ids();
-    let mut resolved_pins = collect_active_rules(rules, &ctx)
+    let mut resolved_pins = collect_active_rules(rules.iter(), &ctx, now)
         .positioning_rules_for_index_uid(index_uid)
         .into_iter()
         .map(|act| {

@@ -343,8 +343,12 @@ impl IndexScheduler {
         let mut wtxn = env.write_txn()?;
 
         let features = features::FeatureData::new(&env, &mut wtxn, options.instance_features)?;
-        let dynamic_search_rules =
-            dynamic_search_rules::DynamicSearchRulesStore::new(&env, &mut wtxn)?;
+        let dynamic_search_rules = dynamic_search_rules::DynamicSearchRulesStore::new(
+            &env,
+            &mut wtxn,
+            &options,
+            budget.map_size,
+        )?;
         let queue = Queue::new(&env, &mut wtxn, &options)?;
         let index_mapper = IndexMapper::new(&env, &mut wtxn, &options, budget)?;
         let chat_settings = env.create_database(&mut wtxn, Some(db_name::CHAT_SETTINGS))?;
@@ -1163,27 +1167,33 @@ impl IndexScheduler {
     }
 
     pub fn put_dynamic_search_rules(&self, rules: DynamicSearchRules) -> Result<()> {
-        let wtxn = self.env.write_txn().map_err(Error::HeedTransaction)?;
-        self.dynamic_search_rules.put(wtxn, rules)?;
-        Ok(())
+        self.dynamic_search_rules.replace_all(rules.into_values())
     }
 
-    pub fn dynamic_search_rules(&self) -> Arc<DynamicSearchRules> {
-        self.dynamic_search_rules.get()
+    pub fn dynamic_search_rules(&self) -> Result<Vec<DynamicSearchRule>> {
+        self.dynamic_search_rules.all_rules()
+    }
+
+    pub fn get_dynamic_search_rule(&self, uid: &RuleUid) -> Result<Option<DynamicSearchRule>> {
+        self.dynamic_search_rules.get_rule(uid)
     }
 
     pub fn put_dynamic_search_rule(&self, rule: &DynamicSearchRule) -> Result<()> {
-        let mut wtxn = self.env.write_txn()?;
-        self.dynamic_search_rules.put_one(&mut wtxn, rule)?;
-        wtxn.commit()?;
-        Ok(())
+        self.dynamic_search_rules.put_rule(rule)
     }
 
     pub fn delete_dynamic_search_rule(&self, uid: &RuleUid) -> Result<bool> {
-        let mut wtxn = self.env.write_txn()?;
-        let deleted = self.dynamic_search_rules.delete_one(&mut wtxn, uid)?;
-        wtxn.commit()?;
-        Ok(deleted)
+        self.dynamic_search_rules.delete_rule(uid)
+    }
+
+    pub fn candidate_dynamic_search_rules(
+        &self,
+        query: Option<&str>,
+        index_uid: &str,
+        now: OffsetDateTime,
+        progress: &milli::progress::Progress,
+    ) -> Result<Vec<DynamicSearchRule>> {
+        self.dynamic_search_rules.candidate_rules(query, index_uid, now, progress)
     }
 
     pub fn update_runtime_webhooks(&self, runtime: RuntimeWebhooks) -> Result<()> {

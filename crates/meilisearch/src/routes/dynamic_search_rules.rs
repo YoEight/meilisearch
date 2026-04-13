@@ -240,10 +240,11 @@ async fn list_rules(
         .features()
         .check_dynamic_search_rules("Using the `/dynamic-search-rules` routes")?;
 
-    let rules = index_scheduler.dynamic_search_rules();
+    let rules = index_scheduler.dynamic_search_rules()?;
+    let filtered_rules =
+        rules.into_iter().filter(|rule| body.0.apply_filter(rule)).collect::<Vec<_>>();
     let pagination = Pagination { offset: body.0.offset, limit: body.0.limit };
-    let pagination_view =
-        pagination.auto_paginate_counting(rules.values().filter(|rule| body.0.apply_filter(rule)));
+    let pagination_view = pagination.auto_paginate_counting(filtered_rules.iter());
 
     Ok(HttpResponse::Ok().json(pagination_view))
 }
@@ -297,8 +298,9 @@ async fn get_rule(
         .check_dynamic_search_rules("Using the `/dynamic-search-rules` routes")?;
 
     let uid = uid.into_inner();
-    let rules = index_scheduler.dynamic_search_rules();
-    let rule = rules.get(&uid).ok_or(DynamicSearchRulesError::NotFound(uid))?;
+    let rule = index_scheduler
+        .get_dynamic_search_rule(&uid)?
+        .ok_or(DynamicSearchRulesError::NotFound(uid))?;
 
     Ok(HttpResponse::Ok().json(rule))
 }
@@ -363,10 +365,8 @@ async fn update_or_create_rule(
         actions: new_actions,
     } = body.into_inner();
 
-    let rules = index_scheduler.dynamic_search_rules();
-    let (mut rule, is_new) = rules
-        .get(&uid)
-        .cloned()
+    let (mut rule, is_new) = index_scheduler
+        .get_dynamic_search_rule(&uid)?
         .map(|r| (r, false))
         .unwrap_or_else(|| (private_default_dynamic_search_rule(uid.clone()), true));
 
